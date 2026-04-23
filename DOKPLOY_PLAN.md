@@ -174,7 +174,58 @@ Phase B adds a `Dockerfile` in this repo and swaps the `image:` line for `ghcr.i
 
 ---
 
-## 6. Open questions to resolve before Phase B
+## 6. Phase B status — write/update/get tools added
+
+Implemented on this branch under `ads_mcp/tools/`:
+
+| Module | Tools |
+|---|---|
+| `_common.py` | shared helpers: `customer_path`, `campaign_path`, `ad_group_path`, `ad_group_ad_path`, `ad_group_criterion_path`, `campaign_criterion_path`, `conversion_action_path`, `geo_target_constant_path`, `language_constant_path`, `micros`, `google_ads_errors` ctx mgr, `set_field_mask`, `gaql_search` |
+| `budgets.py` | `list_budgets`, `create_campaign_budget`, `update_campaign_budget`, `remove_campaign_budget` |
+| `campaigns.py` | `list_campaigns`, `get_campaign`, `pause_campaign`, `enable_campaign`, `remove_campaign`, `update_campaign`, `create_search_campaign` |
+| `ad_groups.py` | `list_ad_groups`, `get_ad_group`, `create_ad_group`, `update_ad_group`, `pause_ad_group`, `enable_ad_group`, `remove_ad_group` |
+| `ads.py` | `list_ads`, `get_ad`, `pause_ad`, `enable_ad`, `remove_ad`, `create_responsive_search_ad` |
+| `keywords.py` | `list_keywords`, `list_campaign_negative_keywords`, `add_keywords`, `update_keyword`, `remove_keyword`, `add_ad_group_negative_keywords`, `add_campaign_negative_keywords`, `remove_campaign_criterion` |
+| `conversions.py` | `list_conversion_actions`, `upload_click_conversions` |
+| `geo.py` | `search_geo_target_constants`, `add_campaign_location_targets`, `add_campaign_language_targets` |
+
+Conventions:
+- Every tool takes `customer_id` as the first arg (no server-wide default — each call is explicit about which account it touches).
+- Every mutate tool accepts `dry_run: bool = False`. When True, the request is sent with `validate_only=True` so the API checks the operation without applying it.
+- Mutate tools are annotated with `ToolAnnotations(destructiveHint=…, idempotentHint=…)` so a thoughtful client can require confirmation on destructive actions.
+- All API errors are wrapped via `_common.google_ads_errors()` into a `ToolError` carrying `request_id` + per-error code/message — the LLM gets a useful trace it can reason about.
+
+### Operational order the LLM should follow
+1. `list_accessible_customers` → pick a `customer_id`.
+2. `list_budgets` / `create_campaign_budget` → get a budget id.
+3. `create_search_campaign(... status="PAUSED")` → returns campaign resource_name.
+4. `add_campaign_location_targets`, `add_campaign_language_targets`, `add_campaign_negative_keywords`.
+5. `create_ad_group` → ad group id.
+6. `add_keywords` → keyword criteria.
+7. `create_responsive_search_ad` → returns ad resource_name.
+8. `enable_campaign` once everything looks right.
+9. Routines: `list_campaigns` + `search` for performance → `update_campaign_budget` / `pause_campaign` / `add_ad_group_negative_keywords` based on signals.
+10. `upload_click_conversions` from your DB/Stripe webhook to close the loop on Smart Bidding.
+
+### What's intentionally not here yet (Phase B+)
+- Asset-based extensions (sitelinks, callouts, images, prices, promotions). These use the AssetService + CampaignAsset/AdGroupAsset link tables — a fair chunk of code, only worth adding once we know which extension types you actually use.
+- Performance Max / Demand Gen / Shopping campaign creators. Each has its own asset group flow.
+- Audiences (custom audiences, customer match, remarketing).
+- Experiments / drafts.
+- Bidding strategy resources (portfolio bidding strategies as standalone resources — only inline strategies are supported in `create_search_campaign`).
+- Keyword Planner (`KeywordPlanIdeaService`) — useful for the "find keyword ideas" prompt; it's a separate read-only flow that's worth adding once the basics are stable.
+
+---
+
+## 7. Note on the upstream PR (#58)
+
+When you pushed this branch, GitHub auto-opened PR #58 into `googleads/google-ads-mcp:main`. The `cla/google` check failed because Google requires every contributor to sign their Contributor License Agreement before any patch can land upstream — and we have no intention of upstreaming this Dokploy plan or the mutate tools (they're for your own deployment).
+
+**Action: close PR #58 on `googleads/google-ads-mcp`.** This branch lives only on your fork; Dokploy installs from `git+https://github.com/RahulVerma989/google-ads-mcp.git@claude/mcp-dokploy-deployment-5mLr9`.
+
+---
+
+## 8. Open questions to resolve before Phase B+
 
 - Do you want a single MCC‑wide server, or a per‑client server (one container per customer)? Affects whether `customer_id` should be a required per‑tool arg.
 - Are the Routines LLM‑driven (Claude deciding to pause a campaign) or deterministic (cron → GAQL → threshold)? Only the first needs mutate tools; the second can live outside MCP.
