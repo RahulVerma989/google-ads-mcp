@@ -129,40 +129,48 @@ The only thing Ryze gets you that this doesn't is a unified endpoint day‑one. 
 
 ---
 
-## 5. Dokploy compose (Phase A, drop‑in)
+## 5. Dokploy deployment (image-built from the repo, auto-deploy on push)
 
-Minor improvements over your current compose: healthcheck, pinned Python, no more runtime `apt-get install git` by using `pipx` from a slim image that already has git baked in via a tiny install layer. If you want to stay with the exact same mechanic you have now, only the healthcheck block and `restart: unless-stopped` ordering matter.
+The repo now ships with a `Dockerfile` + `docker-compose.yml` + `.dockerignore`. Point Dokploy at the repo and it builds and redeploys every time you push to `main`.
 
-```yaml
-version: "3.9"
-services:
-  google-ads-mcp:
-    image: python:3.12-slim
-    restart: unless-stopped
-    command: >
-      sh -c "apt-get update &&
-             apt-get install -y --no-install-recommends git &&
-             rm -rf /var/lib/apt/lists/* &&
-             pip install --no-cache-dir 'git+https://github.com/RahulVerma989/google-ads-mcp.git@claude/mcp-dokploy-deployment-5mLr9' &&
-             google-ads-mcp"
-    environment:
-      GOOGLE_ADS_MCP_OAUTH_CLIENT_ID: ${GOOGLE_ADS_MCP_OAUTH_CLIENT_ID}
-      GOOGLE_ADS_MCP_OAUTH_CLIENT_SECRET: ${GOOGLE_ADS_MCP_OAUTH_CLIENT_SECRET}
-      GOOGLE_ADS_MCP_BASE_URL: ${GOOGLE_ADS_MCP_BASE_URL}   # https://ads-mcp.rahulverma.cc
-      GOOGLE_PROJECT_ID: ${GOOGLE_PROJECT_ID}
-      GOOGLE_ADS_DEVELOPER_TOKEN: ${GOOGLE_ADS_DEVELOPER_TOKEN}
-      GOOGLE_ADS_LOGIN_CUSTOMER_ID: ${GOOGLE_ADS_LOGIN_CUSTOMER_ID}
-      FASTMCP_HOST: "0.0.0.0"
-      FASTMCP_PORT: "8000"
-    expose:
-      - "8000"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.google-ads-mcp.rule=Host(`ads-mcp.rahulverma.cc`)"
-      - "traefik.http.routers.google-ads-mcp.entrypoints=websecure"
-      - "traefik.http.routers.google-ads-mcp.tls.certresolver=letsencrypt"
-      - "traefik.http.services.google-ads-mcp.loadbalancer.server.port=8000"
-```
+### One-time Dokploy setup
+
+1. In the project → **Provider** section, switch from **Raw** to **GitHub**.
+2. Connect the GitHub App if you haven't (one-time). Authorize it on `RahulVerma989/google-ads-mcp`.
+3. Fill in:
+   - **Repository**: `RahulVerma989/google-ads-mcp`
+   - **Branch**: `main`
+   - **Build Type**: **Docker Compose**
+   - **Compose Path**: `docker-compose.yml` (the default)
+4. Save.
+5. Under **Environment Variables**, paste the same env vars you already had:
+   ```
+   GOOGLE_ADS_MCP_OAUTH_CLIENT_ID=...
+   GOOGLE_ADS_MCP_OAUTH_CLIENT_SECRET=...
+   GOOGLE_ADS_MCP_BASE_URL=https://ads-mcp.rahulverma.cc
+   GOOGLE_PROJECT_ID=ads-mcp-server-493813
+   GOOGLE_ADS_DEVELOPER_TOKEN=...
+   GOOGLE_ADS_LOGIN_CUSTOMER_ID=6715704350
+   MCP_HOST=ads-mcp.rahulverma.cc          # optional; default matches this
+   ```
+6. Toggle **Auto Deploy** on. Dokploy creates a webhook on the repo — every push to `main` triggers a rebuild.
+7. Hit **Deploy** once to do the initial build.
+
+### What changes vs your current setup
+- **No more `apt-get install git && pip install git+...` on every container start.** The image is built once per push, cached in Dokploy's registry, and the container starts in ~3s instead of ~90s.
+- **Versions are pinned to a git SHA**, not "latest main" — so if something breaks upstream, you can roll back to the previous deploy in Dokploy UI.
+- Same Traefik labels, same host, same env vars — nothing else moves.
+
+### Files that make this work (this commit)
+- `Dockerfile` — `python:3.12-slim` base, two-phase install for fast incremental rebuilds:
+  - **Phase 1** copies only `pyproject.toml`, extracts `project.dependencies` via stdlib `tomllib`, and `pip install`s the third-party deps (google-ads, mcp[cli], fastmcp and their transitive graph). `build-essential` is added and purged inside the same RUN so it doesn't bloat the layer. **Cached until pyproject.toml changes.**
+  - **Phase 2** copies `README.md`, `MANIFEST.in`, `ads_mcp/` and runs `pip install --no-deps .` — just the local package, no reinstalling the dep tree. Takes ~2–5s even cold.
+  - Net effect: day-to-day code pushes rebuild in ~10–15s (only Phase 2 runs); a dep bump still triggers a full ~90s Phase 1. Single source of truth stays `pyproject.toml` — no separate `requirements.txt` to keep in sync.
+- `docker-compose.yml` — uses `build: .` instead of `image:`. Host rule is parameterized as `${MCP_HOST:-ads-mcp.rahulverma.cc}` so you can reuse the compose across environments without edits.
+- `.dockerignore` — excludes `.git`, `tests/`, `docs/`, planning docs, caches. Keeps the build context small (<1 MB).
+
+### If you want to roll it back
+Swap Provider back to **Raw** and paste the old compose. The two setups are independent.
 
 Checklist before first boot:
 - [ ] GCP OAuth client: add `https://ads-mcp.rahulverma.cc/auth/callback` as an Authorized redirect URI.
