@@ -31,6 +31,12 @@ from ads_mcp.tools import (  # noqa: F401
     keywords,
     conversions,
     geo,
+    keyword_planner,
+    assets,
+    audiences,
+    performance_max,
+    bidding_strategies,
+    experiments,
 )
 from ads_mcp.resources import (
     discovery,

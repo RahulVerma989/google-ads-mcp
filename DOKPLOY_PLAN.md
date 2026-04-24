@@ -174,13 +174,13 @@ Phase B adds a `Dockerfile` in this repo and swaps the `image:` line for `ghcr.i
 
 ---
 
-## 6. Phase B status — write/update/get tools added
+## 6. Phase B status — full campaign-management tool surface
 
 Implemented on this branch under `ads_mcp/tools/`:
 
 | Module | Tools |
 |---|---|
-| `_common.py` | shared helpers: `customer_path`, `campaign_path`, `ad_group_path`, `ad_group_ad_path`, `ad_group_criterion_path`, `campaign_criterion_path`, `conversion_action_path`, `geo_target_constant_path`, `language_constant_path`, `micros`, `google_ads_errors` ctx mgr, `set_field_mask`, `gaql_search` |
+| `_common.py` | Resource-name builders, `micros()`, `gaql_search()`, `set_field_mask()`, and `google_ads_errors()` — which now formats each `GoogleAdsException` as structured JSON containing `code`, `message`, `location` (field path), `trigger`, a plain-English `hint` keyed off the error code, a `request_id`, and a `remediation` note ("retry with dry_run=True"). Hints cover auth, authorization, quota, customer-not-enabled, bad customer_id, duplicate names, policy violations, RSA size limits, customer-match normalization issues, etc. |
 | `budgets.py` | `list_budgets`, `create_campaign_budget`, `update_campaign_budget`, `remove_campaign_budget` |
 | `campaigns.py` | `list_campaigns`, `get_campaign`, `pause_campaign`, `enable_campaign`, `remove_campaign`, `update_campaign`, `create_search_campaign` |
 | `ad_groups.py` | `list_ad_groups`, `get_ad_group`, `create_ad_group`, `update_ad_group`, `pause_ad_group`, `enable_ad_group`, `remove_ad_group` |
@@ -188,6 +188,12 @@ Implemented on this branch under `ads_mcp/tools/`:
 | `keywords.py` | `list_keywords`, `list_campaign_negative_keywords`, `add_keywords`, `update_keyword`, `remove_keyword`, `add_ad_group_negative_keywords`, `add_campaign_negative_keywords`, `remove_campaign_criterion` |
 | `conversions.py` | `list_conversion_actions`, `upload_click_conversions` |
 | `geo.py` | `search_geo_target_constants`, `add_campaign_location_targets`, `add_campaign_language_targets` |
+| `keyword_planner.py` | `generate_keyword_ideas` — KeywordPlanIdeaService-backed keyword research with volume, competition, and bid ranges. Seed by keywords, URL, or both. |
+| `assets.py` | `list_assets`, `create_sitelink_asset`, `create_callout_asset`, `create_structured_snippet_asset`, `create_call_asset`, `create_image_asset` (by URL or base64), `link_assets_to_customer` / `_campaign` / `_ad_group`, `unlink_customer_asset` / `unlink_campaign_asset` / `unlink_ad_group_asset` |
+| `audiences.py` | `list_user_lists`, `create_customer_match_user_list`, `upload_customer_match_contacts` (handles E.164 normalization + SHA256 hashing of email/phone/name+address on the server so the LLM passes plain strings), `attach_user_list_to_ad_group`, `attach_user_list_to_campaign` |
+| `performance_max.py` | `create_performance_max_campaign`, `create_pmax_asset_group` (uses the temp-resource-name atomic-mutate pattern so all creative assets + asset group are created in one transaction), `list_pmax_asset_groups` |
+| `bidding_strategies.py` | `list_bidding_strategies`, `create_portfolio_target_cpa`, `create_portfolio_target_roas`, `create_portfolio_maximize_conversions`, `create_portfolio_maximize_conversion_value`, `update_bidding_strategy`, `set_campaign_bidding_strategy` |
+| `experiments.py` | `list_experiments`, `create_experiment`, `create_experiment_arm`, `schedule_experiment`, `end_experiment`, `graduate_experiment` |
 
 Conventions:
 - Every tool takes `customer_id` as the first arg (no server-wide default — each call is explicit about which account it touches).
@@ -196,24 +202,59 @@ Conventions:
 - All API errors are wrapped via `_common.google_ads_errors()` into a `ToolError` carrying `request_id` + per-error code/message — the LLM gets a useful trace it can reason about.
 
 ### Operational order the LLM should follow
-1. `list_accessible_customers` → pick a `customer_id`.
-2. `list_budgets` / `create_campaign_budget` → get a budget id.
-3. `create_search_campaign(... status="PAUSED")` → returns campaign resource_name.
-4. `add_campaign_location_targets`, `add_campaign_language_targets`, `add_campaign_negative_keywords`.
-5. `create_ad_group` → ad group id.
-6. `add_keywords` → keyword criteria.
-7. `create_responsive_search_ad` → returns ad resource_name.
-8. `enable_campaign` once everything looks right.
-9. Routines: `list_campaigns` + `search` for performance → `update_campaign_budget` / `pause_campaign` / `add_ad_group_negative_keywords` based on signals.
-10. `upload_click_conversions` from your DB/Stripe webhook to close the loop on Smart Bidding.
 
-### What's intentionally not here yet (Phase B+)
-- Asset-based extensions (sitelinks, callouts, images, prices, promotions). These use the AssetService + CampaignAsset/AdGroupAsset link tables — a fair chunk of code, only worth adding once we know which extension types you actually use.
-- Performance Max / Demand Gen / Shopping campaign creators. Each has its own asset group flow.
-- Audiences (custom audiences, customer match, remarketing).
-- Experiments / drafts.
-- Bidding strategy resources (portfolio bidding strategies as standalone resources — only inline strategies are supported in `create_search_campaign`).
-- Keyword Planner (`KeywordPlanIdeaService`) — useful for the "find keyword ideas" prompt; it's a separate read-only flow that's worth adding once the basics are stable.
+**Creating a Search campaign from scratch:**
+1. `list_accessible_customers` → pick a `customer_id`.
+2. `generate_keyword_ideas(customer_id, keywords=['seed1','seed2'])` → research.
+3. `create_campaign_budget` → budget id.
+4. `create_search_campaign(... status="PAUSED")` → campaign id.
+5. `search_geo_target_constants(['United States'])` → geo ids.
+6. `add_campaign_location_targets` + `add_campaign_language_targets` + `add_campaign_negative_keywords`.
+7. `create_ad_group` → ad group id.
+8. `add_keywords` → keyword criteria.
+9. `create_sitelink_asset` / `create_callout_asset` → asset resource_names, then `link_assets_to_campaign(..., field_type='SITELINK' | 'CALLOUT')`.
+10. `create_responsive_search_ad` → ad resource_name.
+11. Sanity-check with `list_ads` + `list_keywords`, then `enable_campaign`.
+
+**Creating a Performance Max campaign:**
+1. `create_campaign_budget` → budget id.
+2. `create_performance_max_campaign(... status="PAUSED")` → campaign id.
+3. `create_image_asset(image_url=...)` × 3 (landscape 1200×628, square 1200×1200, logo 1200×1200).
+4. `create_pmax_asset_group(campaign_id, headlines=[...], long_headlines=[...], descriptions=[...], business_name='...', ...)`.
+5. Optional: `create_customer_match_user_list` + `upload_customer_match_contacts` (your paid users) + `attach_user_list_to_campaign` for audience signals.
+6. `enable_campaign`.
+
+**Routines (continuous optimization):**
+- `list_campaigns` + `search` for performance metrics → decide.
+- `update_campaign_budget`, `pause_campaign`, `update_keyword` (bid), `add_ad_group_negative_keywords` based on signals.
+- `upload_click_conversions` from your DB / Stripe webhook to feed real "paid user" events to Smart Bidding.
+- `create_experiment` + `create_experiment_arm` + `schedule_experiment` for A/B tests; `graduate_experiment` to promote winners.
+
+### Error handling
+
+Every API failure surfaces as a `ToolError` containing JSON like:
+```json
+{
+  "error": "GoogleAdsApiError",
+  "request_id": "abc...",
+  "errors": [{
+    "code": "request_error.INVALID_CUSTOMER_ID",
+    "message": "Customer id must be 10 digits...",
+    "location": "customer_id",
+    "trigger": "'123-456-7890'",
+    "hint": "customer_id must be 10 digits with no hyphens. Pass '1234567890'."
+  }],
+  "hint": "customer_id must be 10 digits with no hyphens...",
+  "remediation": "Retry with dry_run=True to validate without side effects."
+}
+```
+The LLM can parse this, follow the `hint`, and retry — or relay a useful message to the user.
+
+### What's still intentionally not here
+- Demand Gen / Shopping campaign creators (each has its own asset group / listing group flow — add when you have a use case).
+- Remarketing user lists built from tag-based rules (Customer Match covers the big case).
+- Price / Promotion / Lead Form assets (same `create_*_asset` pattern as sitelinks; easy to add).
+- Feed-based local inventory / hotel / travel flows.
 
 ---
 
