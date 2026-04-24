@@ -289,7 +289,8 @@ def create_image_asset(
     op = client.get_type("AssetOperation")
     a = op.create
     a.name = name
-    a.type_ = client.enums.AssetTypeEnum.IMAGE
+    # asset.type is output-only — the API infers it from the populated
+    # asset-data oneof (`image_asset` here).
     a.image_asset.data = data
 
     with _common.google_ads_errors():

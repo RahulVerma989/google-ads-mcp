@@ -282,19 +282,18 @@ def attach_user_list_to_ad_group(
     customer_id: str,
     ad_group_id: str,
     user_list_id: str,
-    targeting_mode: str = "OBSERVATION",
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Attaches a user list to an ad group.
+    """Attaches a user list to an ad group as an AdGroupCriterion.
 
-    Args:
-        targeting_mode: 'OBSERVATION' (default, lets Smart Bidding optimize for
-            the list without restricting reach) or 'TARGETING' (only serves to
-            matched users).
+    Whether the ad group actually *restricts* serving to matched users
+    (TARGETING mode) versus just observing them (OBSERVATION mode) is not
+    controlled here — it's governed by the ad group's
+    `targeting_setting.target_restrictions`. This tool creates the criterion;
+    by default the ad group's existing targeting setting is respected. For
+    most paid-acquisition flows you want OBSERVATION, which lets Smart
+    Bidding weight the audience without shrinking reach.
     """
-    if targeting_mode not in ("OBSERVATION", "TARGETING"):
-        raise ValueError("targeting_mode must be 'OBSERVATION' or 'TARGETING'")
-
     client = utils.get_googleads_client()
     service = client.get_service("AdGroupCriterionService")
     op = client.get_type("AdGroupCriterionOperation")
@@ -304,10 +303,6 @@ def attach_user_list_to_ad_group(
         f"customers/{customer_id}/userLists/{user_list_id}"
     )
     c.status = client.enums.AdGroupCriterionStatusEnum.ENABLED
-    # Observation mode = criterion is a "bid-only" target; API expresses this
-    # via the ad_group's targeting setting, not a per-criterion flag. We set
-    # the criterion as-is; to change targeting_mode globally for the ad group,
-    # use update_ad_group_targeting_setting (not exposed here yet).
     with _common.google_ads_errors():
         response = service.mutate_ad_group_criteria(
             customer_id=customer_id,
@@ -316,14 +311,7 @@ def attach_user_list_to_ad_group(
         )
     return {
         "dry_run": dry_run,
-        "targeting_mode": targeting_mode,
         "results": [{"resource_name": r.resource_name} for r in response.results],
-        "note": (
-            "Targeting mode (TARGETING vs OBSERVATION) is controlled by the "
-            "ad group's targeting_setting.target_restrictions. For most paid "
-            "acquisition use cases, keep ad group on OBSERVATION and let "
-            "Smart Bidding weight the audience."
-        ),
     }
 
 

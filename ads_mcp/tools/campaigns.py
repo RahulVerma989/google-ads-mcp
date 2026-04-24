@@ -254,22 +254,34 @@ def create_search_campaign(
 
     bs = bidding_strategy_type.upper()
     if bs == "MAXIMIZE_CONVERSIONS":
-        c.maximize_conversions  # touch to instantiate oneof
+        # Assigning an empty MaximizeConversions instance marks the oneof.
+        # Simply accessing `c.maximize_conversions` is a no-op in proto-plus.
+        mc = client.get_type("MaximizeConversions")
+        if target_cpa_micros is not None:
+            mc.target_cpa_micros = int(target_cpa_micros)
+        c.maximize_conversions = mc
     elif bs == "MAXIMIZE_CONVERSION_VALUE":
-        c.maximize_conversion_value
+        mcv = client.get_type("MaximizeConversionValue")
+        if target_roas is not None:
+            mcv.target_roas = float(target_roas)
+        c.maximize_conversion_value = mcv
     elif bs == "TARGET_CPA":
         if target_cpa_micros is None:
             raise ValueError("target_cpa_micros is required for TARGET_CPA")
-        c.target_cpa.target_cpa_micros = int(target_cpa_micros)
+        tcpa = client.get_type("TargetCpa")
+        tcpa.target_cpa_micros = int(target_cpa_micros)
+        c.target_cpa = tcpa
     elif bs == "TARGET_ROAS":
         if target_roas is None:
             raise ValueError("target_roas is required for TARGET_ROAS")
-        c.target_roas.target_roas = float(target_roas)
+        tr = client.get_type("TargetRoas")
+        tr.target_roas = float(target_roas)
+        c.target_roas = tr
     elif bs == "MANUAL_CPC":
+        mcpc = client.get_type("ManualCpc")
         if manual_cpc_enhanced is not None:
-            c.manual_cpc.enhanced_cpc_enabled = bool(manual_cpc_enhanced)
-        else:
-            c.manual_cpc  # touch
+            mcpc.enhanced_cpc_enabled = bool(manual_cpc_enhanced)
+        c.manual_cpc = mcpc
     else:
         raise ValueError(f"Unsupported bidding_strategy_type {bidding_strategy_type}")
 

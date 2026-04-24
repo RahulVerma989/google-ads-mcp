@@ -94,17 +94,20 @@ def create_performance_max_campaign(
     c.campaign_budget = _common.campaign_budget_path(customer_id, budget_id)
     c.url_expansion_opt_out = bool(url_expansion_opt_out)
 
+    # Assigning an instance (not just touching) is required to set a
+    # proto-plus oneof branch. Touching `c.maximize_conversions` without
+    # mutating a sub-field leaves the oneof unset and the API rejects it.
     bs = bidding_strategy_type.upper()
     if bs == "MAXIMIZE_CONVERSIONS":
+        mc = client.get_type("MaximizeConversions")
         if target_cpa_micros is not None:
-            c.maximize_conversions.target_cpa_micros = int(target_cpa_micros)
-        else:
-            c.maximize_conversions  # touch
+            mc.target_cpa_micros = int(target_cpa_micros)
+        c.maximize_conversions = mc
     elif bs == "MAXIMIZE_CONVERSION_VALUE":
+        mcv = client.get_type("MaximizeConversionValue")
         if target_roas is not None:
-            c.maximize_conversion_value.target_roas = float(target_roas)
-        else:
-            c.maximize_conversion_value
+            mcv.target_roas = float(target_roas)
+        c.maximize_conversion_value = mcv
     else:
         raise ValueError(
             "Performance Max only supports MAXIMIZE_CONVERSIONS or "
@@ -131,13 +134,6 @@ def create_performance_max_campaign(
             "create_pmax_asset_group(...) before enabling."
         ),
     }
-
-
-def _text_asset_in_group(client, text: str):
-    """Build an AssetGroupAsset with an inline TextAsset."""
-    asset = client.get_type("Asset")
-    asset.text_asset.text = text
-    return asset
 
 
 @mcp.tool(
