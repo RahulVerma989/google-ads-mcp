@@ -95,7 +95,12 @@ def list_device_bid_modifiers(
     CONNECTED_TV, OTHER} and `ad_group_bid_modifier.bid_modifier` as a
     float (-1.0 means '-100% / exclude' in the UI).
     """
-    where = ["ad_group_bid_modifier.device.type != 'UNSPECIFIED'"]
+    # Filter to rows where the criterion oneof is `device` (vs hotel/other).
+    # GAQL doesn't allow filtering on UNSPECIFIED / UNKNOWN enum values
+    # (returns query_error.PROHIBITED_ENUM_CONSTANT), so we use a positive
+    # IN filter over the concrete device values from _VALID_DEVICES.
+    device_values = ", ".join(f"'{d}'" for d in _VALID_DEVICES)
+    where = [f"ad_group_bid_modifier.device.type IN ({device_values})"]
     if ad_group_id:
         where.append(f"ad_group.id = {int(ad_group_id)}")
     if campaign_id:
