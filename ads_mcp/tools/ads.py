@@ -53,7 +53,9 @@ def list_ads(
         customer_id: 10-digit customer id.
         ad_group_id: Optional scope.
         campaign_id: Optional scope.
-        status_filter: e.g. ['ENABLED','PAUSED','REMOVED'].
+        status_filter: Optional list. Valid values: 'ENABLED', 'PAUSED', 'REMOVED'.
+            Do NOT include 'UNSPECIFIED' or 'UNKNOWN' — GAQL rejects those
+            with PROHIBITED_ENUM_CONSTANT.
         limit: Max rows.
     """
     where = []
@@ -185,7 +187,9 @@ def create_responsive_search_ad(
         descriptions: 2-4 description strings (each <= 90 chars).
         path1: Optional display URL path part 1 (<= 15 chars).
         path2: Optional display URL path part 2 (<= 15 chars).
-        status: 'PAUSED' (default) or 'ENABLED'.
+        status: 'PAUSED' (default) or 'ENABLED'. Don't pass 'UNSPECIFIED' or
+            'UNKNOWN'. Use remove_ad() to delete an existing ad rather than
+            passing 'REMOVED' here.
         pinned_headlines: Optional {position: text} where position is 1, 2, or 3.
             Pins specific headlines to that slot.
         dry_run: If True, runs validate_only.

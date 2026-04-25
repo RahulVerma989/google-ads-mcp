@@ -42,8 +42,13 @@ def list_campaigns(
 
     Args:
         customer_id: 10-digit customer id.
-        status_filter: Optional list e.g. ['ENABLED','PAUSED','REMOVED'].
-        channel_type_filter: Optional list e.g. ['SEARCH','DISPLAY','PERFORMANCE_MAX','SHOPPING','VIDEO','DEMAND_GEN','LOCAL','LOCAL_SERVICES','MULTI_CHANNEL'].
+        status_filter: Optional list. Valid values: 'ENABLED', 'PAUSED', 'REMOVED'.
+            Do NOT include 'UNSPECIFIED' or 'UNKNOWN' — GAQL rejects those
+            with PROHIBITED_ENUM_CONSTANT.
+        channel_type_filter: Optional list. Valid values: 'SEARCH', 'DISPLAY',
+            'PERFORMANCE_MAX', 'SHOPPING', 'VIDEO', 'DEMAND_GEN', 'LOCAL',
+            'LOCAL_SERVICES', 'MULTI_CHANNEL', 'HOTEL', 'SMART', 'TRAVEL'.
+            Do NOT include 'UNSPECIFIED' or 'UNKNOWN'.
         name_contains: Optional substring filter on campaign.name.
         limit: Max rows.
     """
@@ -162,7 +167,9 @@ def update_campaign(
         customer_id: 10-digit customer id.
         campaign_id: Numeric campaign id.
         name: New name.
-        status: 'ENABLED' / 'PAUSED' / 'REMOVED'.
+        status: One of 'ENABLED', 'PAUSED', 'REMOVED'. Don't pass 'UNSPECIFIED'
+            or 'UNKNOWN' (the API will reject the mutate). Note that 'REMOVED'
+            is irreversible — prefer pause_campaign() for soft stops.
         budget_id: Numeric campaign_budget id to attach.
         start_date: YYYY-MM-DD.
         end_date: YYYY-MM-DD.

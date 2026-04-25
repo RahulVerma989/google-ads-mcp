@@ -48,10 +48,15 @@ def list_assets(
 
     Args:
         customer_id: 10-digit customer id.
-        type_filter: Optional list of asset types, e.g.
-            ['SITELINK','CALLOUT','STRUCTURED_SNIPPET','CALL','IMAGE',
-             'TEXT','PROMOTION','PRICE','LEAD_FORM','YOUTUBE_VIDEO',
-             'BUSINESS_PROFILE_LOCATION','HOTEL_CALLOUT','MEDIA_BUNDLE'].
+        type_filter: Optional list. Valid values: 'YOUTUBE_VIDEO', 'MEDIA_BUNDLE',
+            'IMAGE', 'TEXT', 'LEAD_FORM', 'BOOK_ON_GOOGLE', 'PROMOTION', 'CALLOUT',
+            'STRUCTURED_SNIPPET', 'SITELINK', 'PAGE_FEED', 'DYNAMIC_EDUCATION',
+            'MOBILE_APP', 'HOTEL_CALLOUT', 'CALL', 'PRICE', 'CALL_TO_ACTION',
+            'DYNAMIC_REAL_ESTATE', 'DYNAMIC_CUSTOM', 'DYNAMIC_HOTELS_AND_RENTALS',
+            'DYNAMIC_FLIGHTS', 'DYNAMIC_TRAVEL', 'DYNAMIC_LOCAL', 'DYNAMIC_JOBS',
+            'LOCATION', 'HOTEL_PROPERTY', 'DEMAND_GEN_CAROUSEL_CARD',
+            'BUSINESS_MESSAGE'. Do NOT include 'UNSPECIFIED' or 'UNKNOWN' —
+            GAQL rejects those with PROHIBITED_ENUM_CONSTANT.
         name_contains: Optional substring filter on asset.name.
         limit: Max rows.
     """

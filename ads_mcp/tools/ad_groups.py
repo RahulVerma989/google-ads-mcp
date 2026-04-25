@@ -40,7 +40,9 @@ def list_ad_groups(
     Args:
         customer_id: 10-digit customer id.
         campaign_id: If set, only ad groups in this campaign.
-        status_filter: e.g. ['ENABLED','PAUSED','REMOVED'].
+        status_filter: Optional list. Valid values: 'ENABLED', 'PAUSED', 'REMOVED'.
+            Do NOT include 'UNSPECIFIED' or 'UNKNOWN' — GAQL rejects those
+            with PROHIBITED_ENUM_CONSTANT.
         limit: Max rows.
     """
     where = []
@@ -80,11 +82,20 @@ def create_ad_group(
     Args:
         customer_id: 10-digit customer id.
         campaign_id: Numeric campaign id.
-        name: Ad group name.
-        type: 'SEARCH_STANDARD','DISPLAY_STANDARD','SHOPPING_PRODUCT_ADS','VIDEO_BUMPER',
-              'SEARCH_DYNAMIC_ADS','VIDEO_NON_SKIPPABLE_IN_STREAM','VIDEO_TRUE_VIEW_IN_DISPLAY', etc.
+        name: Ad group name (must be unique within the campaign).
+        type: Ad group type. Match it to the parent campaign's channel:
+            Search campaigns -> 'SEARCH_STANDARD' or 'SEARCH_DYNAMIC_ADS';
+            Display campaigns -> 'DISPLAY_STANDARD';
+            Shopping campaigns -> 'SHOPPING_PRODUCT_ADS' or 'SHOPPING_SMART_ADS';
+            Video campaigns -> 'VIDEO_BUMPER', 'VIDEO_TRUE_VIEW_IN_STREAM',
+                'VIDEO_TRUE_VIEW_IN_DISPLAY', 'VIDEO_NON_SKIPPABLE_IN_STREAM',
+                'VIDEO_RESPONSIVE', 'VIDEO_EFFICIENT_REACH';
+            Hotel/Travel -> 'HOTEL_ADS', 'TRAVEL_ADS', 'PROMOTED_HOTEL_ADS';
+            Smart Campaigns -> 'SMART_CAMPAIGN_ADS'.
+            Don't pass 'UNSPECIFIED' or 'UNKNOWN'.
         cpc_bid_micros: Default CPC bid in micros (only used for manual bidding).
-        status: 'ENABLED' or 'PAUSED'.
+        status: 'ENABLED' or 'PAUSED'. Don't pass 'UNSPECIFIED', 'UNKNOWN', or
+            'REMOVED' here — use remove_ad_group() if you need to delete.
         dry_run: If True, runs validate_only.
     """
     client = utils.get_googleads_client()
@@ -124,7 +135,18 @@ def update_ad_group(
     cpc_bid_micros: int | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Updates assignable fields on an ad group."""
+    """Updates assignable fields on an ad group. Only the fields you pass are changed.
+
+    Args:
+        customer_id: 10-digit customer id.
+        ad_group_id: Numeric ad group id.
+        name: New name (omit to keep current).
+        status: One of 'ENABLED', 'PAUSED', 'REMOVED'. Don't pass 'UNSPECIFIED'
+            or 'UNKNOWN'. 'REMOVED' is irreversible — prefer pause_ad_group()
+            for soft stops.
+        cpc_bid_micros: Default CPC bid in micros (only used for manual bidding).
+        dry_run: If True, runs validate_only.
+    """
     client = utils.get_googleads_client()
     service = client.get_service("AdGroupService")
     op = client.get_type("AdGroupOperation")

@@ -95,7 +95,12 @@ def list_device_bid_modifiers(
     CONNECTED_TV, OTHER} and `ad_group_bid_modifier.bid_modifier` as a
     float (-1.0 means '-100% / exclude' in the UI).
     """
-    where = ["ad_group_bid_modifier.device.type != 'UNSPECIFIED'"]
+    # Filter to rows where the criterion oneof is `device` (vs hotel/other).
+    # GAQL doesn't allow filtering on UNSPECIFIED / UNKNOWN enum values
+    # (returns query_error.PROHIBITED_ENUM_CONSTANT), so we use a positive
+    # IN filter over the concrete device values from _VALID_DEVICES.
+    device_values = ", ".join(f"'{d}'" for d in _VALID_DEVICES)
+    where = [f"ad_group_bid_modifier.device.type IN ({device_values})"]
     if ad_group_id:
         where.append(f"ad_group.id = {int(ad_group_id)}")
     if campaign_id:
@@ -127,7 +132,10 @@ def add_ad_group_device_bid_modifier(
     Args:
         customer_id: 10-digit customer id.
         ad_group_id: Numeric ad group id.
-        device_type: One of 'MOBILE', 'TABLET', 'DESKTOP', 'CONNECTED_TV', 'OTHER'.
+        device_type: Exactly one of 'MOBILE', 'TABLET', 'DESKTOP',
+            'CONNECTED_TV', 'OTHER'. Do NOT pass 'UNSPECIFIED' or 'UNKNOWN'
+            (the API will reject the mutate, and they're not meaningful
+            targets anyway).
         bid_modifier: -1.0 to exclude (-100% in UI), or a multiplier offset.
             Examples:
               -1.0 -> exclude this device

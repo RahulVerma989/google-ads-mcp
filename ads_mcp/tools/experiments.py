@@ -70,10 +70,15 @@ def create_experiment(
     """Creates an experiment (the shell — arms are added separately).
 
     Args:
-        experiment_type: 'SEARCH_CUSTOM' for Search A/B tests. Other values
-            include 'DISPLAY_AUTOMATED_BIDDING_STRATEGY',
-            'YOUTUBE_CUSTOM', 'HOTEL_CUSTOM'.
+        customer_id: 10-digit customer id.
+        name: Experiment name (must be unique).
+        experiment_type: One of 'SEARCH_CUSTOM' (Search A/B tests — most
+            common), 'DISPLAY_AUTOMATED_BIDDING_STRATEGY', 'YOUTUBE_CUSTOM',
+            'HOTEL_CUSTOM', 'DISPLAY_CUSTOM', 'SEARCH_AUTOMATED_BIDDING_STRATEGY',
+            'DISPLAY_AND_VIDEO_360'. Don't pass 'UNSPECIFIED' or 'UNKNOWN'.
+        description: Optional human-readable description.
         suffix: Appended to auto-created draft campaign names (e.g. '[exp]').
+        dry_run: If True, runs validate_only.
     """
     client = utils.get_googleads_client()
     service = client.get_service("ExperimentService")

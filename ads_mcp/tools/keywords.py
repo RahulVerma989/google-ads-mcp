@@ -55,7 +55,9 @@ def list_keywords(
         ad_group_id: Optional scope.
         campaign_id: Optional scope.
         include_negatives: If False, excludes ad-group negatives.
-        status_filter: e.g. ['ENABLED','PAUSED','REMOVED'].
+        status_filter: Optional list. Valid values: 'ENABLED', 'PAUSED', 'REMOVED'.
+            Do NOT include 'UNSPECIFIED' or 'UNKNOWN' — GAQL rejects those
+            with PROHIBITED_ENUM_CONSTANT.
         limit: Max rows.
     """
     where = ["ad_group_criterion.type = KEYWORD"]
@@ -112,8 +114,10 @@ def add_keywords(
     Args:
         customer_id: 10-digit customer id.
         ad_group_id: Numeric ad group id.
-        keywords: List of {text, match_type, cpc_bid_micros?}. match_type is one of
-            'EXACT', 'PHRASE', 'BROAD'.
+        keywords: List of {text, match_type, cpc_bid_micros?}.
+            match_type MUST be one of 'EXACT', 'PHRASE', 'BROAD' (no
+            'UNSPECIFIED' / 'UNKNOWN'). text is the keyword phrase
+            ("blue widgets"), no quotes / brackets needed.
         dry_run: If True, runs validate_only.
     """
     client = utils.get_googleads_client()
@@ -157,7 +161,18 @@ def update_keyword(
     cpc_bid_micros: int | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Updates an ad-group keyword's status or CPC bid."""
+    """Updates an ad-group keyword's status or CPC bid. Only the fields you pass are changed.
+
+    Args:
+        customer_id: 10-digit customer id.
+        ad_group_id: Numeric ad group id.
+        criterion_id: Numeric criterion id (right half of the keyword's resource_name).
+        status: One of 'ENABLED', 'PAUSED', 'REMOVED'. Don't pass 'UNSPECIFIED'
+            or 'UNKNOWN'. 'REMOVED' is irreversible — prefer status='PAUSED'
+            or remove_keyword() for soft stops.
+        cpc_bid_micros: New CPC bid in micros (only used for manual bidding).
+        dry_run: If True, runs validate_only.
+    """
     client = utils.get_googleads_client()
     service = client.get_service("AdGroupCriterionService")
     op = client.get_type("AdGroupCriterionOperation")
