@@ -79,6 +79,14 @@ def conversion_action_path(
     )
 
 
+def ad_group_bid_modifier_path(
+    customer_id: str, ad_group_id: str | int, criterion_id: str | int
+) -> str:
+    return (
+        f"customers/{customer_id}/adGroupBidModifiers/{ad_group_id}~{criterion_id}"
+    )
+
+
 def geo_target_constant_path(geo_target_id: str | int) -> str:
     return f"geoTargetConstants/{geo_target_id}"
 
@@ -244,8 +252,41 @@ def set_field_mask(operation, *paths: str) -> None:
             existing.add(p)
 
 
+def _make_json_safe(value: Any) -> Any:
+    """Coerce a value tree into something fastmcp + the MCP structured-output
+    JSON validator will always accept.
+
+    Why this is needed: `proto.Message.to_dict()` (used inside utils.format_output_value)
+    can produce dicts containing bytes values, or — for nested resources like
+    change_event.new_resource — values from proto well-known types that don't
+    JSON-serialize cleanly. When fastmcp can't serialize the return value to
+    structured content, it raises 'outputSchema defined but no structured
+    output returned'. This function defangs the tree before the response
+    leaves the tool.
+    """
+    import base64
+
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, bytes):
+        return base64.b64encode(value).decode("ascii")
+    if isinstance(value, dict):
+        return {str(k): _make_json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_make_json_safe(v) for v in value]
+    # Fall back to repr for anything exotic (Decimal, datetime, custom objects)
+    # so the LLM still gets a readable value instead of a serializer crash.
+    return repr(value)
+
+
 def gaql_search(customer_id: str, query: str) -> list[dict]:
-    """Run a GAQL query and return rows formatted via utils.format_output_row."""
+    """Run a GAQL query and return rows formatted via utils.format_output_row.
+
+    Output is post-processed through `_make_json_safe` so that complex resource
+    types (e.g. change_event.new_resource, change_event.changed_fields) don't
+    trigger fastmcp's 'outputSchema defined but no structured output returned'
+    validator with non-JSON-safe leaf values.
+    """
     ga_service = utils.get_googleads_service("GoogleAdsService")
     with google_ads_errors():
         stream = ga_service.search_stream(customer_id=customer_id, query=query)
@@ -253,7 +294,9 @@ def gaql_search(customer_id: str, query: str) -> list[dict]:
         for batch in stream:
             for row in batch.results:
                 out.append(
-                    utils.format_output_row(row, batch.field_mask.paths)
+                    _make_json_safe(
+                        utils.format_output_row(row, batch.field_mask.paths)
+                    )
                 )
         return out
 
@@ -264,6 +307,41 @@ def mutate_summary(response, op_kind: str) -> list[dict]:
     for r in response.results:
         results.append({"resource_name": r.resource_name})
     return [{"operation": op_kind, "results": results}]
+
+
+def build_request(client, request_type_name: str, **fields):
+    """Construct any google-ads Request proto, setting fields universally.
+
+    Why this exists: for every Mutate*/Upload*/Add* service in google-ads
+    Python, fields like `validate_only`, `partial_failure`, and
+    `enable_partial_failure` are NOT exposed as flat kwargs on the service
+    method — they only live on the Request proto. Calling
+    `service.mutate_x(customer_id=..., operations=..., validate_only=True)`
+    raises `unexpected keyword argument 'validate_only'`. The fix is to
+    construct the Request proto and pass it via `request=`. This helper
+    builds that request from kwargs:
+
+      req = build_request(
+          client, "MutateCampaignBudgetsRequest",
+          customer_id=customer_id,
+          operations=[op],
+          validate_only=dry_run,
+      )
+      service.mutate_campaign_budgets(request=req)
+
+    Repeated fields (like `operations`) are .extend()ed; scalars are set.
+    None values are skipped so callers can pass optionals freely.
+    """
+    request = client.get_type(request_type_name)
+    for key, value in fields.items():
+        if value is None:
+            continue
+        attr = getattr(request, key)
+        if isinstance(value, (list, tuple)) and hasattr(attr, "extend"):
+            attr.extend(value)
+        else:
+            setattr(request, key, value)
+    return request
 
 
 def comma_join(items: Iterable[str]) -> str:
