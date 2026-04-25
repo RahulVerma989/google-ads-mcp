@@ -116,6 +116,20 @@ def _search_tool_description() -> str:
 ### Hints for limits
     Requests to resource change_event must specify a LIMIT of less than or equal to 10000
 
+### Hints for enum filters
+    GAQL rejects filters on 'UNSPECIFIED' and 'UNKNOWN' enum values
+    (returns query_error.PROHIBITED_ENUM_CONSTANT). When you build a
+    WHERE clause involving an enum field (status, type, device.type,
+    advertising_channel_type, etc.), only use the concrete values:
+        status:                 ENABLED, PAUSED, REMOVED
+        device.type:            MOBILE, TABLET, DESKTOP, CONNECTED_TV, OTHER
+        advertising_channel_type: SEARCH, DISPLAY, PERFORMANCE_MAX, SHOPPING,
+                                  VIDEO, DEMAND_GEN, LOCAL, LOCAL_SERVICES,
+                                  MULTI_CHANNEL, HOTEL, SMART, TRAVEL
+    Use `IN ('A','B','C')` for multi-value matches. To check 'is this enum
+    set at all?', use a positive IN over every concrete value rather than
+    `!= 'UNSPECIFIED'`.
+
 ### Hints for conversions questions
     https://developers.google.com/google-ads/api/docs/conversions/upload-summaries 
 

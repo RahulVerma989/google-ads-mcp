@@ -56,9 +56,13 @@ def create_campaign_budget(
 
     Args:
         customer_id: 10-digit customer id.
-        name: Unique budget name.
+        name: Unique budget name (collisions return DUPLICATE_NAME).
         amount: Daily budget in account currency (e.g. 50.0 = $50/day).
-        delivery_method: 'STANDARD' or 'ACCELERATED'.
+            Sub-currency-minimum amounts return BUDGET_AMOUNT_TOO_SMALL.
+        delivery_method: 'STANDARD' (recommended; pace evenly across the day)
+            or 'ACCELERATED' (deprecated for most campaign types — Google
+            now treats it as STANDARD for Search/Display/Shopping). Don't
+            pass 'UNSPECIFIED' or 'UNKNOWN'.
         explicitly_shared: True to allow attaching to multiple campaigns.
         dry_run: If True, runs validate_only.
     """

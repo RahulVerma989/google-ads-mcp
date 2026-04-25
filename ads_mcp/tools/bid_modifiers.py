@@ -132,7 +132,10 @@ def add_ad_group_device_bid_modifier(
     Args:
         customer_id: 10-digit customer id.
         ad_group_id: Numeric ad group id.
-        device_type: One of 'MOBILE', 'TABLET', 'DESKTOP', 'CONNECTED_TV', 'OTHER'.
+        device_type: Exactly one of 'MOBILE', 'TABLET', 'DESKTOP',
+            'CONNECTED_TV', 'OTHER'. Do NOT pass 'UNSPECIFIED' or 'UNKNOWN'
+            (the API will reject the mutate, and they're not meaningful
+            targets anyway).
         bid_modifier: -1.0 to exclude (-100% in UI), or a multiplier offset.
             Examples:
               -1.0 -> exclude this device
